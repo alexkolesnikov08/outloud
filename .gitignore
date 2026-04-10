@@ -1,0 +1,40 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+dist/
+build/
+
+# Виртуальное окружение
+venv/
+.venv/
+
+# Модели (тяжёлые)
+models/
+*.model/
+
+# Логи
+outloud-logs/
+
+# Ключи API
+~/.outloud/
+
+# Вывод программы
+outloud_*/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# macOS
+.DS_Store
+
+# Тестовые данные
+сказки/
+test.m4a
+*.chunk_*.*
+*.txt

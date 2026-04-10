@@ -1,0 +1,11 @@
+vosk>=0.3.44
+sounddevice>=0.4.6
+numpy>=1.24.0
+click>=8.1.0
+rich>=13.0.0
+scipy>=1.11.0
+pydub>=0.25.0
+sentencepiece>=0.2.0
+yt-dlp>=2024.1.0
+mlx-lm>=0.20.0
+openai>=1.0.0
