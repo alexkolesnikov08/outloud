@@ -1,4 +1,4 @@
-"""Qwen3.5-0.8B 4-bit через MLX — суммаризация и коррекция грамматики."""
+"""Qwen 0.8B 4-bit via MLX — summarization and grammar correction."""
 
 import gc
 import re
@@ -12,18 +12,18 @@ from outloud.logger import get_logger
 log = get_logger("qwen")
 
 MODEL_NAME = "mlx-community/Qwen3.5-0.8B-MLX-4bit"
-MODEL_SIZE_MB = 500  # 4-bit квантование
+MODEL_SIZE_MB = 500  # 4-bit quantized
 
 
 class QwenPipeline:
-    """Qwen3.5 4-bit через MLX — нативно для Apple Silicon."""
+    """Qwen 0.8B 4-bit via MLX — native for Apple Silicon."""
 
     def __init__(self):
         self._model = None
         self._tokenizer = None
 
     def _load(self):
-        """Ленивая загрузка модели."""
+        """Lazy load model."""
         if self._model is not None:
             return
 
@@ -32,7 +32,7 @@ class QwenPipeline:
         log.info("Qwen loaded (~%dMB 4-bit)", MODEL_SIZE_MB)
 
     def _run(self, messages: list[dict], max_tokens: int = 512) -> str:
-        """Запустить генерацию."""
+        """Run generation."""
         self._load()
 
         prompt = self._tokenizer.apply_chat_template(
@@ -56,7 +56,7 @@ class QwenPipeline:
         return response.strip()
 
     def summarize(self, text: str) -> str:
-        """Суммаризировать текст."""
+        """Summarize text."""
         if not text.strip():
             return ""
 
@@ -71,17 +71,17 @@ class QwenPipeline:
 
         messages = [
             {"role": "system", "content": (
-                "Ты помогаешь кратко пересказать текст. "
-                "Выдели главную мысль в 2-4 предложениях. "
-                "Пиши только результат, без вводных слов."
+                "You help summarize text. "
+                "Highlight the main idea in 2-4 sentences. "
+                "Write only the result, no filler words."
             )},
-            {"role": "user", "content": f"Перескажи кратко:\n\n{text}"}
+            {"role": "user", "content": f"Summarize briefly:\n\n{text}"}
         ]
 
         return self._run(messages, max_tokens=256)
 
     def _summarize_long(self, text: str) -> str:
-        """Суммаризация длинного текста батчами."""
+        """Summarize long text in batches."""
         sentences = re.split(r'(?<=[.!?])\s+', text)
 
         batches = []
@@ -101,10 +101,10 @@ class QwenPipeline:
         for batch in batches:
             messages = [
                 {"role": "system", "content": (
-                    "Кратко перескажи суть текста. 2-3 предложения. "
-                    "Только результат."
+                    "Briefly summarize the text. 2-3 sentences. "
+                    "Only the result."
                 )},
-                {"role": "user", "content": f"Перескажи:\n\n{batch}"}
+                {"role": "user", "content": f"Summarize:\n\n{batch}"}
             ]
             partials.append(self._run(messages, max_tokens=200))
 
@@ -112,17 +112,17 @@ class QwenPipeline:
             combined = "\n".join(partials)
             messages = [
                 {"role": "system", "content": (
-                    "Объедини в один краткий текст. 2-4 предложения. "
-                    "Только результат."
+                    "Combine these partial summaries into one. 2-4 sentences. "
+                    "Only the result."
                 )},
-                {"role": "user", "content": f"Объедини:\n\n{combined}"}
+                {"role": "user", "content": f"Combine:\n\n{combined}"}
             ]
             return self._run(messages, max_tokens=256)
 
         return partials[0] if partials else ""
 
     def correct_grammar(self, text: str) -> str:
-        """Исправить грамматику и пунктуацию."""
+        """Fix grammar and punctuation."""
         if not text.strip():
             return text
 
@@ -145,11 +145,11 @@ class QwenPipeline:
         for batch in batches:
             messages = [
                 {"role": "system", "content": (
-                    "Исправь грамматические и пунктуационные ошибки. "
-                    "НЕ меняй смысл. НЕ добавляй от себя. "
-                    "Выведи только исправленный текст."
+                    "Fix grammatical and punctuation errors. "
+                    "DO NOT change the meaning. DO NOT add anything. "
+                    "Output only the corrected text."
                 )},
-                {"role": "user", "content": f"Исправь:\n\n{batch}"}
+                {"role": "user", "content": f"Fix errors:\n\n{batch}"}
             ]
             c = self._run(messages, max_tokens=len(batch.split()) * 2)
             corrected.append(c)
@@ -160,7 +160,7 @@ class QwenPipeline:
         return result
 
     def cleanup(self):
-        """Освободить память."""
+        """Free memory."""
         if self._model is not None:
             del self._model
             self._model = None
@@ -175,7 +175,7 @@ _pipeline = None
 
 
 def get_pipeline() -> QwenPipeline:
-    """Синглтон."""
+    """Get singleton pipeline."""
     global _pipeline
     if _pipeline is None:
         _pipeline = QwenPipeline()
@@ -183,7 +183,7 @@ def get_pipeline() -> QwenPipeline:
 
 
 def check_qwen_model() -> bool:
-    """Проверить, скачана ли модель."""
+    """Check if model is downloaded."""
     try:
         import mlx.core as mx
         from mlx_lm import load
@@ -196,7 +196,7 @@ def check_qwen_model() -> bool:
 
 
 def download_qwen_model():
-    """Скачать модель."""
+    """Download the model."""
     log.info("Downloading %s", MODEL_NAME)
     print(f"Downloading Qwen 4-bit ({MODEL_SIZE_MB}MB)...")
     model, tok = load(MODEL_NAME)

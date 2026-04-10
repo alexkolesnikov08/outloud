@@ -1,4 +1,4 @@
-"""OutLoud Cloud — Groq + fallback на локальные модели."""
+"""OutLoud Cloud — Groq + fallback to local models."""
 
 import json
 import os
@@ -15,29 +15,29 @@ log = get_logger("cloud")
 
 KEYS_FILE = Path.home() / ".outloud" / "api_keys.json"
 
-# Модели — Groq
+# Models — Groq
 WHISPER_MODEL = "whisper-large-v3-turbo"
-# Цепочка fallback для суммаризации
+# Fallback chain for summarization
 SUMMARY_MODELS = [
     "openai/gpt-oss-20b",
     "qwen/qwen3-32b",
     "llama-3.3-70b-versatile",
     "llama-3.1-8b-instant",
 ]
-# Цепочка fallback для грамматики
+# Fallback chain for grammar
 GRAMMAR_MODELS = [
     "llama-3.1-8b-instant",
     "meta-llama/llama-4-scout-17b-16e-instruct",
 ]
-LOCAL_SUMMARY_MODEL = "llama-3.1-8b-instant"
-LOCAL_GRAMMAR_MODEL = "llama-3.1-8b-instant"
 
 
 def _ensure_keys_dir():
+    """Ensure the keys directory exists."""
     KEYS_FILE.parent.mkdir(parents=True, exist_ok=True)
 
 
 def save_api_keys(groq_key: str):
+    """Save API keys to ~/.outloud/api_keys.json."""
     _ensure_keys_dir()
     data = {
         "groq_api_key": groq_key,
@@ -49,6 +49,7 @@ def save_api_keys(groq_key: str):
 
 
 def load_api_keys() -> Optional[dict]:
+    """Load API keys."""
     if not KEYS_FILE.exists():
         return None
     with open(KEYS_FILE) as f:
@@ -56,10 +57,12 @@ def load_api_keys() -> Optional[dict]:
 
 
 def check_keys() -> bool:
+    """Check if API keys are configured."""
     return load_api_keys() is not None
 
 
 def _get_client() -> OpenAI:
+    """Get Groq OpenAI client."""
     keys = load_api_keys()
     if not keys:
         raise RuntimeError("API keys not configured. Run: outloud cloud-setup")
@@ -70,7 +73,7 @@ def _get_client() -> OpenAI:
 
 
 def _is_rate_limit(err) -> bool:
-    """Проверить, что ошибка — лимиты."""
+    """Check if the error is a rate limit."""
     msg = str(err).lower()
     return any(k in msg for k in [
         "rate_limit", "quota", "limit", "rate limit",
@@ -80,48 +83,77 @@ def _is_rate_limit(err) -> bool:
 
 def _chat_with_fallback(client: OpenAI, model_list: list[str],
                         messages: list[dict], **kwargs) -> str:
-    """Попробовать модели по очереди, при лимитах — следующую."""
-    last_err = None
-
+    """Try models in order, move to next on rate limits."""
     for model in model_list:
         try:
             resp = client.chat.completions.create(
                 model=model, messages=messages, **kwargs)
             return resp.choices[0].message.content.strip()
         except Exception as e:
-            last_err = e
             if _is_rate_limit(e):
-                log.warning("Rate limit on %s, trying next model", model)
+                log.warning("Rate limit on %s, trying next", model)
                 continue
             raise
 
-    # Все модели Groq исчерпаны — последняя строка
-    print("⚠ Groq лимиты исчерпаны — используем локальные модели")
+    # All Groq models exhausted
+    print("⚠ Groq limits reached — falling back to local models")
     return ""
 
 
-def _chunk_audio(audio_path: str, chunk_sec: int = 600) -> list[str]:
-    """Разбить аудио на чанки по chunk_sec секунд."""
+def _transcribe_chunks(client: OpenAI, audio_path: str) -> str:
+    """Transcribe large audio file in chunks."""
     from pydub import AudioSegment
+    import tempfile
+
     audio = AudioSegment.from_mp3(audio_path)
-    chunks = []
-    for i in range(0, len(audio), chunk_sec * 1000):
-        chunk = audio[i:i + chunk_sec * 1000]
-        tmp = audio_path + f".chunk_{i}.wav"
-        chunk.export(tmp, format="wav")
-        chunks.append(tmp)
-    return chunks
+    chunk_ms = 300_000  # 5 min — mp3 will be ~5MB
+    total_chunks = max(1, len(audio) // chunk_ms + (1 if len(audio) % chunk_ms else 0))
+
+    print(f"File is large — splitting into {total_chunks} chunks")
+
+    parts = []
+    for i in range(0, len(audio), chunk_ms):
+        chunk = audio[i:i + chunk_ms]
+        chunk_num = i // chunk_ms + 1
+
+        with Progress(
+            SpinnerColumn(),
+            TextColumn(f"[white]transcribing chunk {chunk_num}/{total_chunks}"),
+            BarColumn(bar_width=30),
+            TimeElapsedColumn(),
+            transient=True,
+        ) as prog:
+            prog.add_task("work", total=None)
+
+            # Export as mp3 to save space
+            with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tmp:
+                chunk.export(tmp.name, format="mp3", bitrate="64k")
+                with open(tmp.name, "rb") as f:
+                    result = client.audio.transcriptions.create(
+                        model=WHISPER_MODEL,
+                        file=f,
+                        response_format="text",
+                        language="ru",
+                    )
+                os.unlink(tmp.name)
+
+            text = result.strip() if isinstance(result, str) else result.text.strip()
+            parts.append(text)
+
+    full_text = " ".join(parts)
+    log.info("Cloud transcription (chunked) done: %d words", len(full_text.split()))
+    return full_text
 
 
 def transcribe_cloud(audio_path: str) -> str:
-    """Расшифровка: Whisper Large v3 Turbo. Fallback → локальный Vosk."""
+    """Transcription: Whisper Large v3 Turbo. Fallback -> local Vosk."""
     if not os.path.exists(audio_path):
         raise FileNotFoundError(f"Audio not found: {audio_path}")
 
     log.info("Cloud transcription: %s", audio_path)
     client = _get_client()
 
-    # Проверяем размер — если > 20MB, чанкуем
+    # Check size — chunk if > 20MB
     file_size = os.path.getsize(audio_path)
     is_large = file_size > 20 * 1024 * 1024
 
@@ -155,7 +187,7 @@ def transcribe_cloud(audio_path: str) -> str:
             from outloud.transcriber import transcribe_vosk
             return transcribe_vosk(audio_path)
         if _is_rate_limit(e):
-            print("⚠ Groq лимиты — транскрибация локально")
+            print("⚠ Groq limits — transcribing locally")
             from outloud.transcriber import transcribe_vosk
             return transcribe_vosk(audio_path)
         if "413" in str(e) or "too large" in str(e).lower():
@@ -163,53 +195,8 @@ def transcribe_cloud(audio_path: str) -> str:
         raise
 
 
-def _transcribe_chunks(client: OpenAI, audio_path: str) -> str:
-    """Транскрибация большого файла по частям."""
-    from pydub import AudioSegment
-    import tempfile
-
-    audio = AudioSegment.from_mp3(audio_path)
-    chunk_ms = 300_000  # 5 минут — mp3 будет ~5MB
-    total_chunks = max(1, len(audio) // chunk_ms + (1 if len(audio) % chunk_ms else 0))
-
-    print(f"File is large — splitting into {total_chunks} chunks")
-
-    parts = []
-    for i in range(0, len(audio), chunk_ms):
-        chunk = audio[i:i + chunk_ms]
-        chunk_num = i // chunk_ms + 1
-
-        with Progress(
-            SpinnerColumn(),
-            TextColumn(f"[white]transcribing chunk {chunk_num}/{total_chunks}"),
-            BarColumn(bar_width=30),
-            TimeElapsedColumn(),
-            transient=True,
-        ) as prog:
-            prog.add_task("work", total=None)
-
-            # Экспортируем в mp3 для экономии места
-            with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tmp:
-                chunk.export(tmp.name, format="mp3", bitrate="64k")
-                with open(tmp.name, "rb") as f:
-                    result = client.audio.transcriptions.create(
-                        model=WHISPER_MODEL,
-                        file=f,
-                        response_format="text",
-                        language="ru",
-                    )
-                os.unlink(tmp.name)
-
-            text = result.strip() if isinstance(result, str) else result.text.strip()
-            parts.append(text)
-
-    full_text = " ".join(parts)
-    log.info("Cloud transcription (chunked) done: %d words", len(full_text.split()))
-    return full_text
-
-
 def summarize_cloud(text: str) -> str:
-    """Суммаризация: GPT-OSS 20B → Qwen 32B → Llama 70B → Llama 8B."""
+    """Summarization: GPT-OSS 20B -> Qwen 32B -> Llama 70B -> Llama 8B."""
     if not text.strip():
         return ""
     words = text.split()
@@ -221,10 +208,10 @@ def summarize_cloud(text: str) -> str:
 
     messages = [
         {"role": "system", "content": (
-            "Кратко перескажи текст. 2-4 предложения. "
-            "Только результат, без вводных слов."
+            "Briefly summarize the text. 2-4 sentences. "
+            "Only the result, no filler words."
         )},
-        {"role": "user", "content": f"Перескажи кратко:\n\n{text}"}
+        {"role": "user", "content": f"Summarize briefly:\n\n{text}"}
     ]
 
     with Progress(
@@ -243,13 +230,13 @@ def summarize_cloud(text: str) -> str:
         log.info("Cloud summary done: %d words", len(result.split()))
         return result
 
-    # Fallback на локальную модель
+    # Fallback to local model
     from outloud.summarizer import summarize_text
     return summarize_text(text, engine="qwen")
 
 
 def correct_grammar_cloud(text: str) -> str:
-    """Грамматика: Llama 3.1 8B → Llama 4 Scout."""
+    """Grammar: Llama 3.1 8B -> Llama 4 Scout."""
     if not text.strip():
         return text
 
@@ -258,11 +245,11 @@ def correct_grammar_cloud(text: str) -> str:
 
     messages = [
         {"role": "system", "content": (
-            "Исправь грамматические и пунктуационные ошибки. "
-            "НЕ меняй смысл. НЕ добавляй от себя. "
-            "Выведи только исправленный текст."
+            "Fix grammatical and punctuation errors. "
+            "DO NOT change the meaning. DO NOT add anything. "
+            "Output only the corrected text."
         )},
-        {"role": "user", "content": f"Исправь ошибки:\n\n{text}"}
+        {"role": "user", "content": f"Fix errors:\n\n{text}"}
     ]
 
     with Progress(
@@ -281,7 +268,7 @@ def correct_grammar_cloud(text: str) -> str:
         log.info("Cloud grammar done: %d chars", len(result))
         return result
 
-    # Fallback на локальную модель
+    # Fallback to local model
     from outloud.qwen_llm import get_pipeline
     qwen = get_pipeline()
     fixed = qwen.correct_grammar(text)
@@ -290,6 +277,7 @@ def correct_grammar_cloud(text: str) -> str:
 
 
 def verify_keys() -> bool:
+    """Verify API keys are valid."""
     try:
         client = _get_client()
         models = client.models.list()

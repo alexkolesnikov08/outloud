@@ -7,21 +7,21 @@ __pycache__/
 dist/
 build/
 
-# Виртуальное окружение
+# Virtual environment
 venv/
 .venv/
 
-# Модели (тяжёлые)
+# Models (heavy)
 models/
 *.model/
 
-# Логи
+# Logs
 outloud-logs/
 
-# Ключи API
+# API keys
 ~/.outloud/
 
-# Вывод программы
+# Output folders
 outloud_*/
 
 # IDE
@@ -33,7 +33,7 @@ outloud_*/
 # macOS
 .DS_Store
 
-# Тестовые данные
+# Test data
 сказки/
 test.m4a
 *.chunk_*.*

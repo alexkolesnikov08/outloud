@@ -1,71 +1,80 @@
-"""Запись аудио с микрофона + VU-метр."""
+"""Audio recording with VU meter."""
 
 import numpy as np
 import sounddevice as sd
-from scipy.io.wavfile import write
 
-from outloud.config import SAMPLE_RATE, CHANNELS
+from outloud.config import SAMPLE_RATE, CHANNELS, DTYPE
+from outloud.logger import get_logger
 
-
-VU_CHARS = " _-~=+*#%@"
-VU_WIDTH = 40
+log = get_logger("recorder")
 
 
-def _rms_level(data: np.ndarray) -> float:
-    """RMS уровень громкости (0-1)."""
-    if len(data) == 0:
-        return 0.0
-    normalized = data.astype(np.float32) / 32767.0
-    rms = np.sqrt(np.mean(normalized ** 2))
-    return min(rms * 5, 1.0)
+def _vu_meter(indata: np.ndarray, frames: int, time_info, status):
+    """Callback that shows volume level during recording."""
+    if status:
+        pass  # Ignore status messages
+    rms = np.sqrt(np.mean(indata ** 2))
+    level = int(rms * 1000)
+    bar = "█" * min(level, 30)
+    print(f"\r[{bar:<30}] {level:3d}", end="", flush=True)
 
 
-def _render_vu(level: float) -> str:
-    """VU-метр строкой."""
-    filled = int(level * VU_WIDTH)
-    bar = ''.join(VU_CHARS[-1] if i < filled else ' ' for i in range(VU_WIDTH))
-    db = int(level * 100)
-    return f"[{bar}] {db:3d}%"
+def record_audio() -> np.ndarray:
+    """Record audio from microphone with VU meter.
 
-
-def record_audio(sample_rate: int = SAMPLE_RATE) -> np.ndarray:
-    """Записать аудио с микрофона до Ctrl+C с VU-метром."""
-    frames = []
-    recording = False
-    current_vu = ""
-
-    def callback(indata, frames_count, time_info, status):
-        nonlocal current_vu
-        if recording:
-            frames.append(indata.copy())
-            level = _rms_level(indata)
-            current_vu = "\r" + _render_vu(level)
+    Returns:
+        numpy array of int16 audio samples
+    """
+    log.info("Starting recording...")
 
     print("Recording... (Ctrl+C to stop)")
+    recording = []
+
+    def callback(indata, frames, time_info, status):
+        if status:
+            pass
+        rms = np.sqrt(np.mean(indata ** 2))
+        level = int(rms * 1000)
+        bar_len = min(level // 3, 30)
+        bar = "█" * bar_len
+        print(f"\r[{bar:<30}] {level:3d}", end="", flush=True)
+        recording.append(indata.copy())
 
     try:
         with sd.InputStream(
-            samplerate=sample_rate,
+            samplerate=SAMPLE_RATE,
             channels=CHANNELS,
-            dtype='int16',
-            callback=callback
+            dtype=DTYPE,
+            callback=callback,
         ):
-            recording = True
-            while True:
-                sd.sleep(100)
-                if current_vu:
-                    print(current_vu, end="", flush=True)
+            sd.sleep(1000)  # Keep alive
     except KeyboardInterrupt:
         print()
-        print("Recording stopped")
-        recording = False
+        log.info("Recording stopped by user")
 
-    if frames:
-        return np.concatenate(frames, axis=0)
-    return np.array([], dtype='int16')
+    if not recording:
+        return np.array([], dtype=np.int16)
+
+    audio = np.concatenate(recording, axis=0)
+    log.info("Recording done: %d samples (%.1fs)", len(audio), len(audio) / SAMPLE_RATE)
+    return audio
 
 
-def save_audio(data: np.ndarray, filepath: str, sample_rate: int = SAMPLE_RATE) -> str:
-    """Сохранить аудио в WAV файл."""
-    write(filepath, sample_rate, data)
-    return filepath
+def save_audio(audio: np.ndarray, filepath: str):
+    """Save audio to WAV file.
+
+    Args:
+        audio: numpy array of int16 samples
+        filepath: Output path
+    """
+    import wave
+
+    log.info("Saving audio to %s", filepath)
+
+    with wave.open(filepath, "wb") as wf:
+        wf.setnchannels(CHANNELS)
+        wf.setsampwidth(2)  # int16 = 2 bytes
+        wf.setframerate(SAMPLE_RATE)
+        wf.writeframes(audio.tobytes())
+
+    log.info("Audio saved: %s", filepath)

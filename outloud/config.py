@@ -1,77 +1,87 @@
-"""Конфигурация проекта."""
+"""Configuration for OutLoud."""
 
-import os
+import platform
+import subprocess
 from pathlib import Path
 
 
-# Пути
-PROJECT_DIR = Path(__file__).parent.parent
-MODELS_DIR = PROJECT_DIR / "models"
-LOGS_DIR = PROJECT_DIR / "outloud-logs"
+# Default output directory
 OUTPUT_DIR = Path.home() / "Desktop"
 
-# Модели Vosk
+# Vosk models
 VOSK_MODELS = {
     "small": {
-        "url": "https://alphacephei.com/vosk/models/vosk-model-small-ru-0.22.zip",
         "name": "vosk-model-small-ru-0.22",
         "size": "70MB",
+        "url": "https://alphacephei.com/vosk/models/vosk-model-small-ru-0.22.zip",
     },
     "medium": {
-        "url": "https://alphacephei.com/vosk/models/vosk-model-ru-0.42.zip",
         "name": "vosk-model-ru-0.42",
         "size": "800MB",
+        "url": "https://alphacephei.com/vosk/models/vosk-model-ru-0.42.zip",
     },
     "large": {
-        "url": "https://alphacephei.com/vosk/models/vosk-model-ru-0.42-large.zip",
-        "name": "vosk-model-ru-0.42-large",
+        "name": "vosk-model-large-ru-0.42",
         "size": "2.3GB",
+        "url": "https://alphacephei.com/vosk/models/vosk-model-large-ru-0.42.zip",
     },
 }
 
-# Модели Whisper
-WHISPER_MODELS = {
-    "tiny": "tiny",
-    "base": "base",
-    "small": "small",
-}
-
-# Модели суммаризации
+# Summary models
 SUMMARY_MODELS = {
-    "extractive": "extractive",  # Быстрая, без ML
-    "qwen": "qwen",              # Qwen3.5-0.8B, качество
+    "extractive": "extractive",  # Fast, no ML
+    "qwen": "qwen",              # Qwen 0.8B 4-bit via MLX
 }
 
-# Модель коррекции грамматики
+# Grammar models
 GRAMMAR_MODELS = {
-    "mbart": {
-        "name": "MRNH/mbart-russian-grammar-corrector",
-        "size": "2.4GB",
-        "src_lang": "ru_RU",
-        "tgt_lang": "ru_RU",
-    },
     "qwen": {
-        "name": "Qwen/Qwen3.5-0.8B",
-        "size": "1.8GB",
+        "name": "Qwen 0.8B 4-bit",
+        "size": "500MB",
     },
 }
 
-# Параметры записи
+# Recording settings
 SAMPLE_RATE = 16000
 CHANNELS = 1
-
-
-def get_output_dir() -> Path:
-    """Получить директорию для вывода."""
-    output_env = os.environ.get("OUTLOUD_OUTPUT_DIR")
-    if output_env:
-        return Path(output_env)
-    return OUTPUT_DIR
+DTYPE = "int16"
 
 
 def get_models_dir() -> Path:
-    """Получить директорию для моделей."""
-    models_env = os.environ.get("OUTLOUD_MODELS_DIR")
-    if models_env:
-        return Path(models_env)
-    return MODELS_DIR
+    """Get the models directory."""
+    return Path(__file__).parent.parent / "models"
+
+
+def get_output_dir() -> Path:
+    """Get the default output directory."""
+    return OUTPUT_DIR
+
+
+def detect_hardware() -> dict:
+    """Detect hardware capabilities."""
+    chip = platform.processor() or "unknown"
+    try:
+        mem = subprocess.check_output(
+            "sysctl -n hw.memsize 2>/dev/null || echo 4294967296", shell=True
+        ).decode().strip()
+        mem_gb = int(mem) // (1024**3)
+    except Exception:
+        mem_gb = 4
+
+    # Choose best model for hardware
+    if mem_gb >= 16:
+        vosk_size = "medium"
+        ai_model = "qwen4b"
+    elif mem_gb >= 8:
+        vosk_size = "small"
+        ai_model = "qwen"
+    else:
+        vosk_size = "small"
+        ai_model = "qwen"
+
+    return {
+        "chip": chip,
+        "ram_gb": mem_gb,
+        "vosk_size": vosk_size,
+        "ai_model": ai_model,
+    }

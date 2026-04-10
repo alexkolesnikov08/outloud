@@ -1,229 +1,130 @@
-"""Транскрибация аудио."""
+"""Vosk transcription."""
 
 import json
 import os
-from pathlib import Path
 
+from vosk import Model, KaldiRecognizer
 import numpy as np
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn
 
-from outloud.config import MODELS_DIR, VOSK_MODELS, WHISPER_MODELS, SAMPLE_RATE
-from outloud.utils import to_wav, cleanup_temp_wav
+from outloud.config import get_models_dir, VOSK_MODELS
 from outloud.logger import get_logger
 
 log = get_logger("transcriber")
 
-VOSK_CHUNK = 8000  # ~0.5 сек при 16kHz
+CHUNK_SIZE = 4000  # Samples per chunk
 
 
-def check_vosk_model(variant: str = "small") -> bool:
-    """Проверить наличие модели Vosk."""
-    model_info = VOSK_MODELS.get(variant)
-    if not model_info:
-        return False
-    model_path = MODELS_DIR / model_info["name"]
-    return model_path.exists()
+def _get_model_path(size: str = "small") -> str:
+    """Get the model path."""
+    model_name = VOSK_MODELS[size]["name"]
+    return str(get_models_dir() / model_name)
 
 
-def download_vosk_model(variant: str = "small"):
-    """Скачать и распаковать модель Vosk."""
+def check_vosk_model(size: str = "small") -> bool:
+    """Check if the model exists."""
+    model_path = _get_model_path(size)
+    return os.path.exists(os.path.join(model_path, "am", "final.mdl"))
+
+
+def download_vosk_model(size: str = "small"):
+    """Download the Vosk model."""
     import urllib.request
     import zipfile
 
-    model_info = VOSK_MODELS[variant]
+    model_info = VOSK_MODELS[size]
     url = model_info["url"]
     name = model_info["name"]
 
-    MODELS_DIR.mkdir(parents=True, exist_ok=True)
-    zip_path = MODELS_DIR / f"{name}.zip"
+    models_dir = get_models_dir()
+    models_dir.mkdir(parents=True, exist_ok=True)
 
-    def reporthook(block_num, block_size, total_size):
-        downloaded = block_num * block_size
-        if total_size > 0:
-            percent = min(downloaded / total_size * 100, 100)
-            bar_len = 30
-            filled = int(bar_len * percent / 100)
-            bar = "#" * filled + "." * (bar_len - filled)
-            mb_down = downloaded / 1024 / 1024
-            mb_total = total_size / 1024 / 1024
-            print(f"\r  [{bar}] {percent:.0f}% ({mb_down:.0f}/{mb_total:.0f}MB)", end="", flush=True)
+    zip_path = models_dir / f"{name}.zip"
 
-    print(f"Downloading Vosk {variant}...")
-    log.info("Downloading Vosk %s", variant)
-    urllib.request.urlretrieve(url, zip_path, reporthook)
-    print()
+    print(f"Downloading {name} ({model_info['size']})...")
 
-    print(f"Extracting {name}...")
-    with zipfile.ZipFile(zip_path, 'r') as z:
-        z.extractall(MODELS_DIR)
+    devnull = os.open(os.devnull, os.O_WRONLY)
+    old_err = os.dup(2)
+    os.dup2(devnull, 2)
 
-    os.remove(zip_path)
-    log.info("Vosk %s downloaded", variant)
-    print(f"Vosk {variant} ready")
-
-
-def check_whisper_model(variant: str = "small") -> bool:
-    """Проверить наличие модели Whisper."""
     try:
-        import whisper
-        whisper.load_model(variant, device="cpu")
-        return True
-    except Exception:
-        return False
+        urllib.request.urlretrieve(url, zip_path)
+        with zipfile.ZipFile(zip_path, 'r') as z:
+            z.extractall(models_dir)
+        zip_path.unlink()
+    finally:
+        os.dup2(old_err, 2)
+        os.close(devnull)
+
+    print(f"{name} downloaded")
 
 
-def download_whisper_model(variant: str = "small"):
-    """Скачать модель Whisper."""
-    import whisper
-    log.info("Downloading Whisper %s", variant)
-    print(f"Downloading Whisper {variant}...")
+def transcribe_vosk(audio) -> str:
+    """Transcribe audio with Vosk.
 
-    devnull = os.open(os.devnull, os.O_WRONLY)
-    old_out = os.dup(1)
-    old_err = os.dup(2)
-    os.dup2(devnull, 1)
-    os.dup2(devnull, 2)
+    Args:
+        audio: numpy array of int16 or path to audio file
+    """
+    model_path = _get_model_path("small")
+    log.info("Loading Vosk model: %s", model_path)
 
-    model = whisper.load_model(variant, device="cpu")
-
-    os.dup2(old_out, 1)
-    os.dup2(old_err, 2)
-    os.close(devnull)
-    os.close(old_out)
-    os.close(old_err)
-
-    del model
-    log.info("Whisper %s downloaded", variant)
-    print(f"Whisper {variant} ready")
-
-
-def transcribe_vosk(audio_data: np.ndarray | str, variant: str = "small",
-                   sample_rate: int = SAMPLE_RATE) -> str:
-    """Транскрибировать аудио через Vosk с прогресс-баром."""
+    # Suppress Vosk logs
     import logging
-    logging.getLogger("vosk").setLevel(logging.ERROR)
+    logging.getLogger("vosk").setLevel(logging.WARNING)
 
-    model_info = VOSK_MODELS[variant]
-    model_path = MODELS_DIR / model_info["name"]
-
-    if not model_path.exists():
-        raise RuntimeError(
-            f"Vosk {variant} not found. Run: outloud install-models -m vosk -v {variant}"
-        )
-
-    # Подготовка аудио
-    temp_wav = None
-    if isinstance(audio_data, np.ndarray):
-        audio_bytes = audio_data.tobytes()
-    else:
-        temp_wav = to_wav(audio_data, sample_rate)
-        import wave
-        with wave.open(temp_wav, 'rb') as wf:
-            audio_bytes = wf.readframes(wf.getnframes())
-            sample_rate = wf.getframerate()
-
-    log.info("Loading Vosk %s", variant)
-
-    # Глушим логи загрузки
     devnull = os.open(os.devnull, os.O_WRONLY)
-    old_out = os.dup(1)
     old_err = os.dup(2)
-    os.dup2(devnull, 1)
     os.dup2(devnull, 2)
 
-    from vosk import Model, KaldiRecognizer
+    try:
+        model = Model(model_path)
+    finally:
+        os.dup2(old_err, 2)
+        os.close(devnull)
 
-    model = Model(str(model_path))
-    recognizer = KaldiRecognizer(model, sample_rate)
+    rec = KaldiRecognizer(model, 16000)
+    rec.SetWords(True)
 
-    os.dup2(old_out, 1)
-    os.dup2(old_err, 2)
-    os.close(devnull)
-    os.close(old_out)
-    os.close(old_err)
+    # Handle numpy array or file path
+    if isinstance(audio, np.ndarray):
+        audio_data = audio.tobytes()
+    else:
+        # Load from file
+        import wave
+        audio_path = audio if isinstance(audio, str) else str(audio)
+        wf = wave.open(audio_path, "rb")
+        audio_data = wf.readframes(wf.getnframes())
+        wf.close()
 
-    log.info("Transcribing with Vosk %s, %d bytes", variant, len(audio_bytes))
-
-    # Батчим по кускам для прогресс-бара
-    text_parts = []
-    total = len(audio_bytes)
+    # Process in chunks
+    total = len(audio_data)
     processed = 0
+    result = []
 
     with Progress(
         SpinnerColumn(),
-        TextColumn("[white]{task.description}"),
+        TextColumn("[white]transcribing (vosk)"),
         BarColumn(bar_width=30),
         TextColumn("[white]{task.percentage:.0f}%"),
         TimeElapsedColumn(),
         transient=True,
     ) as prog:
-        task = prog.add_task("transcribing", total=total)
+        task = prog.add_task("work", total=total)
 
-        for i in range(0, total, VOSK_CHUNK * 2):  # int16 = 2 байта
-            chunk = audio_bytes[i:i + VOSK_CHUNK * 2]
-            if recognizer.AcceptWaveform(chunk):
-                result = json.loads(recognizer.Result())
-                t = result.get('text', '')
-                if t:
-                    text_parts.append(t)
+        for i in range(0, total, CHUNK_SIZE * 2):  # int16 = 2 bytes
+            chunk = audio_data[i:i + CHUNK_SIZE * 2]
+            if rec.AcceptWaveform(chunk):
+                res = json.loads(rec.Result())
+                if "text" in res and res["text"]:
+                    result.append(res["text"])
             processed += len(chunk)
             prog.update(task, completed=min(processed, total))
 
-        # Финальный результат
-        result = json.loads(recognizer.FinalResult())
-        t = result.get('text', '')
-        if t:
-            text_parts.append(t)
+        # Final result
+        res = json.loads(rec.FinalResult())
+        if "text" in res and res["text"]:
+            result.append(res["text"])
 
-    if temp_wav:
-        cleanup_temp_wav(temp_wav)
-
-    text = ' '.join(filter(None, text_parts)).strip()
-    log.info("Vosk done: %d chars", len(text))
-    return text
-
-
-def transcribe_whisper(audio_path: str | Path, variant: str = "small") -> str:
-    """Транскрибировать аудио через Whisper."""
-    import whisper
-
-    audio_path = str(audio_path)
-
-    temp_wav = None
-    if not audio_path.lower().endswith('.wav'):
-        temp_wav = to_wav(audio_path)
-        audio_path = temp_wav
-
-    log.info("Loading Whisper %s", variant)
-
-    # Глушим логи
-    devnull = os.open(os.devnull, os.O_WRONLY)
-    old_out = os.dup(1)
-    old_err = os.dup(2)
-    os.dup2(devnull, 1)
-    os.dup2(devnull, 2)
-
-    model = whisper.load_model(variant, device="cpu")
-
-    os.dup2(old_out, 1)
-    os.dup2(old_err, 2)
-    os.close(devnull)
-    os.close(old_out)
-    os.close(old_err)
-
-    with Progress(
-        SpinnerColumn(),
-        TextColumn("[white]transcribing with Whisper"),
-        TimeElapsedColumn(),
-        transient=True,
-    ) as prog:
-        prog.add_task("work", total=None)  # Indeterminate
-        result = model.transcribe(audio_path, language="ru")
-
-    del model
-    if temp_wav:
-        cleanup_temp_wav(temp_wav)
-
-    text = result.get('text', '')
-    log.info("Whisper done: %d chars", len(text))
+    text = " ".join(r for r in result if r)
+    log.info("Vosk transcription done: %d words", len(text.split()))
     return text

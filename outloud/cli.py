@@ -1,4 +1,4 @@
-"""OutLoud CLI — просто и понятно."""
+"""CLI interface — simple and straightforward."""
 
 import os
 import subprocess
@@ -35,11 +35,13 @@ log = get_logger("cli")
 
 
 def _save(filename: str, content: str, folder: Path):
+    """Save text to a file in the session folder."""
     folder.mkdir(parents=True, exist_ok=True)
     (folder / filename).write_text(content, encoding="utf-8")
 
 
 def _stats(start: float, text: str, summary: str, folder: Path):
+    """Print processing stats."""
     secs = time.time() - start
     words = len(text.split())
     print()
@@ -49,7 +51,7 @@ def _stats(start: float, text: str, summary: str, folder: Path):
 @click.group()
 @click.version_option(version=__version__)
 def main():
-    """OutLoud — запись, транскрибация и краткое содержание."""
+    """OutLoud — record, transcribe, and summarize audio."""
     pass
 
 
@@ -57,11 +59,11 @@ def main():
 
 @main.command()
 def setup():
-    """Подготовить всё для работы (один раз)."""
+    """Set up everything needed (run once)."""
     print("Setting up OutLoud...")
     print()
 
-    # Определяем железо
+    # Detect hardware
     import platform
     chip = platform.processor() or "unknown"
     try:
@@ -77,27 +79,25 @@ def setup():
     print(f"  RAM: {mem_gb}GB")
     print()
 
-    # Транскрибация — Vosk small (всегда)
+    # Transcription — Vosk small (always)
     print("Voice model: downloading (~70MB)...")
     if not check_vosk_model("small"):
         download_vosk_model("small")
     print("  Voice model: ready")
 
-    # AI модель — под железо
+    # AI model — based on hardware
     if mem_gb >= 16:
-        # Могли бы запустить Qwen 4B или даже 7B
         print("  AI model: downloading Qwen 4B...")
     elif mem_gb >= 8:
         print("  AI model: downloading Qwen 0.8B 4-bit (~500MB)...")
         from outloud.qwen_llm import download_qwen_model
         download_qwen_model()
     else:
-        # 4GB — только Qwen 0.8B 4-bit
         print("  AI model: downloading Qwen 0.8B 4-bit (~500MB)...")
         from outloud.qwen_llm import download_qwen_model
         download_qwen_model()
 
-    # ffmpeg проверка
+    # ffmpeg check
     try:
         subprocess.run(["ffmpeg", "-version"], capture_output=True, check=True)
         print("  Audio converter: ready")
@@ -111,10 +111,10 @@ def setup():
 # ─── record ──────────────────────────────────────────────────────────────
 
 @main.command()
-@click.option('--cloud', is_flag=True, default=False, help='Облачные модели')
-@click.option('--grammar', is_flag=True, default=False, help='Исправить ошибки')
+@click.option('--cloud', is_flag=True, default=False, help='Use cloud models')
+@click.option('--grammar', is_flag=True, default=False, help='Fix grammar')
 def record(cloud: bool, grammar: bool):
-    """Записать голос → текст → краткое содержание."""
+    """Record voice -> text -> summary."""
     if cloud and not check_keys():
         print("Cloud not configured. Type: outloud cloud-setup")
         return
@@ -125,7 +125,7 @@ def record(cloud: bool, grammar: bool):
     sess.mkdir(parents=True, exist_ok=True)
     start = time.time()
 
-    # Запись
+    # Recording
     print()
     print("Recording... (Ctrl+C to stop)")
     audio = record_audio()
@@ -136,7 +136,7 @@ def record(cloud: bool, grammar: bool):
     save_audio(audio, str(sess / "audio.wav"))
     print("Audio saved")
 
-    # Транскрибация
+    # Transcription
     if cloud:
         text = transcribe_cloud(str(sess / "audio.wav"))
     else:
@@ -144,7 +144,7 @@ def record(cloud: bool, grammar: bool):
     _save("transcription.txt", text, sess)
     print("Transcription done")
 
-    # Суммаризация
+    # Summarization
     if cloud:
         summary = summarize_cloud(text)
     else:
@@ -152,7 +152,7 @@ def record(cloud: bool, grammar: bool):
     _save("summary.txt", summary, sess)
     print("Summary done")
 
-    # Грамматика
+    # Grammar correction
     if grammar:
         if cloud:
             fixed = correct_grammar_cloud(summary)
@@ -173,10 +173,10 @@ def record(cloud: bool, grammar: bool):
 
 @main.command("file")
 @click.argument("filepath", type=click.Path(exists=True))
-@click.option('--cloud', is_flag=True, default=False, help='Облачные модели')
-@click.option('--grammar', is_flag=True, default=False, help='Исправить ошибки')
+@click.option('--cloud', is_flag=True, default=False, help='Use cloud models')
+@click.option('--grammar', is_flag=True, default=False, help='Fix grammar')
 def transcribe_file(filepath: str, cloud: bool, grammar: bool):
-    """Транскрибировать аудиофайл."""
+    """Transcribe an audio file."""
     if cloud and not check_keys():
         print("Cloud not configured. Type: outloud cloud-setup")
         return
@@ -187,7 +187,7 @@ def transcribe_file(filepath: str, cloud: bool, grammar: bool):
     sess.mkdir(parents=True, exist_ok=True)
     start = time.time()
 
-    # Транскрибация
+    # Transcription
     if cloud:
         text = transcribe_cloud(filepath)
     else:
@@ -195,7 +195,7 @@ def transcribe_file(filepath: str, cloud: bool, grammar: bool):
     _save("transcription.txt", text, sess)
     print("Transcription done")
 
-    # Суммаризация
+    # Summarization
     if cloud:
         summary = summarize_cloud(text)
     else:
@@ -203,7 +203,7 @@ def transcribe_file(filepath: str, cloud: bool, grammar: bool):
     _save("summary.txt", summary, sess)
     print("Summary done")
 
-    # Грамматика
+    # Grammar correction
     if grammar:
         if cloud:
             fixed = correct_grammar_cloud(summary)
@@ -224,10 +224,10 @@ def transcribe_file(filepath: str, cloud: bool, grammar: bool):
 
 @main.command("yt")
 @click.argument("url")
-@click.option('--cloud', is_flag=True, default=False, help='Облачные модели')
-@click.option('--grammar', is_flag=True, default=False, help='Исправить ошибки')
+@click.option('--cloud', is_flag=True, default=False, help='Use cloud models')
+@click.option('--grammar', is_flag=True, default=False, help='Fix grammar')
 def youtube(url: str, cloud: bool, grammar: bool):
-    """Транскрибировать YouTube видео."""
+    """Transcribe a YouTube video."""
     if cloud and not check_keys():
         print("Cloud not configured. Type: outloud cloud-setup")
         return
@@ -245,7 +245,7 @@ def youtube(url: str, cloud: bool, grammar: bool):
     audio_path, _ = download_audio(url, sess)
     print("Audio downloaded")
 
-    # Транскрибация
+    # Transcription
     if cloud:
         text = transcribe_cloud(audio_path)
     else:
@@ -253,7 +253,7 @@ def youtube(url: str, cloud: bool, grammar: bool):
     _save("transcription.txt", text, sess)
     print("Transcription done")
 
-    # Суммаризация
+    # Summarization
     if cloud:
         summary = summarize_cloud(text)
     else:
@@ -261,7 +261,7 @@ def youtube(url: str, cloud: bool, grammar: bool):
     _save("summary.txt", summary, sess)
     print("Summary done")
 
-    # Грамматика
+    # Grammar correction
     if grammar:
         if cloud:
             fixed = correct_grammar_cloud(summary)
@@ -282,15 +282,15 @@ def youtube(url: str, cloud: bool, grammar: bool):
 
 @main.command("cloud-setup")
 def cloud_setup():
-    """Подключить облачные модели (Whisper + GPT-OSS + Llama)."""
+    """Set up cloud models (Groq API key)."""
     print("OutLoud Cloud Setup")
     print()
-    print("Нужен ключ Groq (бесплатно): https://console.groq.com/keys")
+    print("You need a Groq key (free): https://console.groq.com/keys")
     print()
-    print("Облачные модели:")
-    print("  Расшифровка: Whisper Large v3 (H100)")
-    print("  Суммаризация: GPT-OSS 20B")
-    print("  Грамматика: Llama 3.1 8B")
+    print("Cloud models:")
+    print("  Transcription: Whisper Large v3 (H100)")
+    print("  Summarization: GPT-OSS 20B")
+    print("  Grammar: Llama 3.1 8B")
     print()
 
     key = input("Groq API key: ").strip()
@@ -313,7 +313,7 @@ def cloud_setup():
 
 @main.command("cloud-status")
 def cloud_status():
-    """Проверить облачные ключи."""
+    """Check cloud API key status."""
     if not check_keys():
         print("Cloud not configured. Run: outloud cloud-setup")
         return

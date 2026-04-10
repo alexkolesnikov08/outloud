@@ -1,4 +1,4 @@
-"""Суммаризация текста — extractive или Qwen."""
+"""Text summarization — extractive or Qwen."""
 
 import gc
 import re
@@ -28,7 +28,7 @@ TARGET_SUMMARY_RATIO = 0.15
 
 
 def _split_sentences(text: str) -> list[str]:
-    """Разбить текст на предложения."""
+    """Split text into sentences."""
     parts = re.split(r'([.!?]+)', text)
     sentences = []
     for i in range(0, len(parts), 2):
@@ -46,7 +46,7 @@ def _split_sentences(text: str) -> list[str]:
 
 
 def summarize_extractive(text: str) -> str:
-    """Экстрактивная суммаризация — быстро, без ML."""
+    """Extractive summarization — fast, no ML."""
     if not text.strip():
         return ""
 
@@ -101,7 +101,7 @@ def summarize_extractive(text: str) -> str:
 
 
 def summarize_qwen(text: str) -> str:
-    """Суммаризация через Qwen3.5-0.8B."""
+    """Summarization via Qwen 0.8B 4-bit."""
     from outloud.qwen_llm import get_pipeline
     pipeline = get_pipeline()
 
@@ -122,11 +122,11 @@ def summarize_qwen(text: str) -> str:
 
 def summarize_text(text: str, engine: str = "extractive") -> str:
     """
-    Суммаризировать текст.
+    Summarize text.
 
     Args:
-        text: Текст
-        engine: "extractive" (быстро) или "qwen" (качество)
+        text: Input text
+        engine: "extractive" (fast) or "qwen" (quality)
     """
     if engine == "qwen":
         return summarize_qwen(text)
