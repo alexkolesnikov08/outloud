@@ -1,0 +1,74 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "outloud"
+version = "0.3.0"
+description = "Record voice -> get text + summary"
+requires-python = ">=3.11"
+dependencies = [
+    "vosk>=0.3.44",
+    "sounddevice>=0.4.6",
+    "numpy>=1.24.0",
+    "click>=8.1.0",
+    "rich>=13.0.0",
+    "scipy>=1.11.0",
+    "pydub>=0.25.0",
+    "openai>=1.0.0",
+    "yt-dlp>=2024.1.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "ruff>=0.4.0",
+]
+mlx = [
+    "mlx-lm>=0.20.0",
+]
+
+[project.scripts]
+outloud = "outloud.cli:main"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = [
+    "E",     # pycodestyle errors
+    "W",     # pycodestyle warnings
+    "F",     # pyflakes
+    "I",     # isort
+    "N",     # pep8-naming
+    "UP",    # pyupgrade
+    "B",     # flake8-bugbear
+    "SIM",   # flake8-simplify
+    "TCH",   # flake8-type-checking
+    "RUF",   # ruff-specific
+]
+ignore = [
+    "E501",  # line too long (handled by formatter)
+    "B008",  # do not perform function calls in argument defaults (click uses this)
+    "N818",  # exception name should end with Error
+    "SIM102", # use a single if statement
+    "SIM108", # use ternary operator
+    "SIM114", # combine if branches
+    "SIM115", # use context manager for opening files
+    "RUF001", # ambiguous unicode character
+    "B904",  # raise without from (intentional in fallback chains)
+]
+
+[tool.ruff.lint.per-file-ignores]
+"outloud/__init__.py" = ["F401"]
+"outloud/cli.py" = ["E402"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = "test_*.py"
+python_functions = "test_*"
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "local: marks tests that require local models",
+]

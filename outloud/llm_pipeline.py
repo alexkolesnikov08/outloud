@@ -4,7 +4,7 @@ import gc
 import re
 
 import mlx.core as mx
-from mlx_lm import load, generate
+from mlx_lm import generate, load
 from mlx_lm.generate import make_sampler
 
 from outloud.config import LOCAL_LLM_MODELS

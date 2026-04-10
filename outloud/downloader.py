@@ -1,14 +1,13 @@
 """Audio downloader from any URL (YouTube, Vimeo, etc.) via yt-dlp."""
 
 import os
-import tempfile
 from pathlib import Path
 
 import yt_dlp
 
 from outloud.config import YTDLP_TIMEOUT
+from outloud.exceptions import DownloadError, InvalidURLError, NetworkError
 from outloud.logger import get_logger
-from outloud.exceptions import InvalidURLError, DownloadError, NetworkError
 
 log = get_logger("downloader")
 

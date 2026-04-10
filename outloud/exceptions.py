@@ -42,7 +42,7 @@ class NetworkError(OutLoudError):
 class RateLimitError(OutLoudError):
     """Raised when API rate limits are exceeded."""
 
-    def __init__(self, service: str, retry_after: int = None):
+    def __init__(self, service: str, retry_after: int | None = None):
         self.service = service
         self.retry_after = retry_after
         hint = f"\nRetry after {retry_after}s" if retry_after else ""
@@ -110,5 +110,5 @@ class APIKeyError(ConfigError):
     def __init__(self, service: str):
         super().__init__(
             f"{service}_api_key",
-            f"Run: outloud cloud-setup"
+            "Run: outloud cloud-setup"
         )

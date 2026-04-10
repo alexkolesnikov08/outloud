@@ -3,7 +3,7 @@
 import numpy as np
 import sounddevice as sd
 
-from outloud.config import SAMPLE_RATE, CHANNELS, DTYPE
+from outloud.config import CHANNELS, DTYPE, SAMPLE_RATE
 from outloud.logger import get_logger
 
 log = get_logger("recorder")

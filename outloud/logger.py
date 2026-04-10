@@ -4,6 +4,7 @@ import logging
 import logging.handlers
 from datetime import datetime
 from pathlib import Path
+from typing import ClassVar
 
 LOG_DIR = Path(__file__).parent.parent / "outloud-logs"
 LOG_DIR.mkdir(parents=True, exist_ok=True)
@@ -15,13 +16,13 @@ BACKUP_COUNT = 3
 class OutLoudFormatter(logging.Formatter):
     """Formatter with colored levels."""
 
-    COLORS = {
+    COLORS: ClassVar[dict[str, str]] = {
         "DEBUG": "\033[36m",     # cyan
         "INFO": "\033[32m",      # green
         "WARNING": "\033[33m",   # yellow
         "ERROR": "\033[31m",     # red
     }
-    RESET = "\033[0m"
+    RESET: ClassVar[str] = "\033[0m"
 
     def format(self, record):
         color = self.COLORS.get(record.levelname, "")

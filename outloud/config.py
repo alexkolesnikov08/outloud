@@ -5,7 +5,6 @@ import platform
 import subprocess
 from pathlib import Path
 
-
 # ─── Paths ───────────────────────────────────────────────────────────────────
 
 OUTPUT_DIR = Path.home() / "Desktop"

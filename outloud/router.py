@@ -1,27 +1,13 @@
 """ProviderRouter — unified model selection with fallback chains."""
 
-import time
-from typing import Optional, Callable
 
 from outloud.config import (
-    VOSK_MODELS,
-    LOCAL_LLM_MODELS,
-    CLOUD_SUMMARY_MODELS,
-    CLOUD_GRAMMAR_MODELS,
-    CLOUD_WHISPER_MODEL,
-    LANG_TO_VOSK,
     LANG_TO_LLM,
-    RATE_LIMIT_RETRY_DELAY,
-    API_TIMEOUT,
+    LANG_TO_VOSK,
     model_exists,
-    get_models_dir,
 )
 from outloud.exceptions import (
-    RateLimitError,
-    QuotaExceededError,
     ModelNotFoundError,
-    NetworkError,
-    APIKeyError,
 )
 from outloud.logger import get_logger
 

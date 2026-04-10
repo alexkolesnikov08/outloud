@@ -3,13 +3,13 @@
 import json
 import os
 
-from vosk import Model, KaldiRecognizer
 import numpy as np
-from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn
+from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
+from vosk import KaldiRecognizer, Model
 
-from outloud.config import get_models_dir, VOSK_MODELS, LANG_TO_VOSK
+from outloud.config import LANG_TO_VOSK, VOSK_MODELS, get_models_dir
+from outloud.exceptions import AudioError, ModelNotFoundError
 from outloud.logger import get_logger
-from outloud.exceptions import ModelNotFoundError, AudioError
 
 log = get_logger("transcriber")
 
@@ -166,14 +166,14 @@ def transcribe_vosk(audio, language: str = "ru") -> str:
             chunk = audio_data[i:i + CHUNK_SIZE * 2]
             if rec.AcceptWaveform(chunk):
                 res = json.loads(rec.Result())
-                if "text" in res and res["text"]:
+                if res.get("text"):
                     result.append(res["text"])
             processed += len(chunk)
             prog.update(task, completed=min(processed, total))
 
         # Final result
         res = json.loads(rec.FinalResult())
-        if "text" in res and res["text"]:
+        if res.get("text"):
             result.append(res["text"])
 
     text = " ".join(r for r in result if r)

@@ -1,8 +1,6 @@
 """CLI interface for OutLoud."""
 
-import os
 import subprocess
-import sys
 import time
 from datetime import datetime
 from pathlib import Path
@@ -11,29 +9,24 @@ import click
 from rich.console import Console
 
 from outloud import __version__
-from outloud.config import (
-    get_output_dir,
-    get_models_dir,
-    detect_hardware,
-    VOSK_MODELS,
-    LOCAL_LLM_MODELS,
-    model_exists,
-)
-from outloud.transcriber import transcribe_vosk, check_vosk_model, download_vosk_model
-from outloud.summarizer import summarize_extractive
 from outloud.cloud import (
-    transcribe_cloud,
-    summarize_cloud,
-    correct_grammar_cloud,
-    save_api_keys,
     check_keys,
+    save_api_keys,
     verify_keys,
 )
+from outloud.config import (
+    LOCAL_LLM_MODELS,
+    VOSK_MODELS,
+    detect_hardware,
+    get_output_dir,
+    model_exists,
+)
 from outloud.downloader import download_audio, get_video_info
-from outloud.recorder import record_audio, save_audio
-from outloud.router import ProviderRouter
 from outloud.llm_pipeline import LLMPipeline
 from outloud.logger import get_logger
+from outloud.recorder import record_audio, save_audio
+from outloud.router import ProviderRouter
+from outloud.transcriber import download_vosk_model
 
 console = Console()
 log = get_logger("cli")
@@ -67,7 +60,7 @@ def main():
               help='Specific model to download (e.g. vosk-small-en)')
 @click.option('--all', 'download_all', is_flag=True, default=False,
               help='Download all available models')
-def setup(model: str = None, download_all: bool = False):
+def setup(model: str | None = None, download_all: bool = False):
     """Set up OutLoud (download models)."""
     hw = detect_hardware()
     print(f"OutLoud v{__version__}")
@@ -180,7 +173,7 @@ def _setup_all_models():
               help='Language (auto-detect if not set)')
 @click.option('--model', type=str, default=None,
               help='Custom local model path (GGUF/MLX)')
-def record(cloud: bool, grammar: bool, lang: str = None, model: str = None):
+def record(cloud: bool, grammar: bool, lang: str | None = None, model: str | None = None):
     """Record from microphone → text → summary."""
     if cloud and not check_keys():
         print("Cloud not configured. Run: outloud cloud-setup")
@@ -254,7 +247,7 @@ def record(cloud: bool, grammar: bool, lang: str = None, model: str = None):
 @click.option('--grammar', is_flag=True, default=False, help='Fix grammar')
 @click.option('--lang', type=click.Choice(['ru', 'en']), default=None,
               help='Language (auto-detect if not set)')
-def transcribe_file(filepath: str, cloud: bool, grammar: bool, lang: str = None):
+def transcribe_file(filepath: str, cloud: bool, grammar: bool, lang: str | None = None):
     """Process an audio file."""
     if cloud and not check_keys():
         print("Cloud not configured. Run: outloud cloud-setup")
@@ -299,9 +292,8 @@ def transcribe_file(filepath: str, cloud: bool, grammar: bool, lang: str = None)
             print("Grammar done")
         except Exception as e:
             print(f"Grammar failed: {e}")
-        final = summary
     else:
-        final = summary
+        pass
 
     router.cleanup()
     _stats(start, text, summary, sess)
@@ -315,7 +307,7 @@ def transcribe_file(filepath: str, cloud: bool, grammar: bool, lang: str = None)
 @click.option('--grammar', is_flag=True, default=False, help='Fix grammar')
 @click.option('--lang', type=click.Choice(['ru', 'en']), default=None,
               help='Language (auto-detect if not set)')
-def process_url(url: str, cloud: bool, grammar: bool, lang: str = None):
+def process_url(url: str, cloud: bool, grammar: bool, lang: str | None = None):
     """Process audio from any URL (YouTube, Vimeo, etc.)."""
     if cloud and not check_keys():
         print("Cloud not configured. Run: outloud cloud-setup")
@@ -369,9 +361,8 @@ def process_url(url: str, cloud: bool, grammar: bool, lang: str = None):
             print("Grammar done")
         except Exception as e:
             print(f"Grammar failed: {e}")
-            final = summary
     else:
-        final = summary
+        pass
 
     router.cleanup()
     _stats(start, text, summary, sess)

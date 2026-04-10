@@ -4,8 +4,6 @@ import gc
 import re
 from collections import Counter
 
-from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn
-
 from outloud.logger import get_logger
 
 log = get_logger("summarizer")
@@ -18,7 +16,7 @@ STOP_WORDS = {
     'для', 'от', 'о', 'об', 'со', 'же', 'ли', 'бы', 'вот',
     'так', 'более', 'менее', 'очень', 'просто', 'тоже', 'только',
     'при', 'про', 'без', 'через', 'после', 'когда', 'если', 'чем',
-    'ну', 'вообще', 'потом', 'ещё', 'уже', 'даже', 'сам', 'себя',
+    'ну', 'вообще', 'потом', 'ещё', 'даже', 'сам', 'себя',
     'меня', 'мне', 'мной', 'нас', 'нам', 'этом', 'этот',
     'тот', 'та', 'те', 'тех', 'тем', 'теми',
     # English stop words
@@ -104,7 +102,7 @@ def summarize_extractive(text: str) -> str:
     all_scored.sort(key=lambda x: x[1], reverse=True)
     top = []
     seen = set()
-    for idx, score in all_scored:
+    for idx, _score in all_scored:
         sent_text = sentences[idx].strip().lower()
         if sent_text not in seen and len(top) < target_count:
             top.append(idx)

@@ -4,25 +4,24 @@ import json
 import os
 import time
 from pathlib import Path
-from typing import Optional
 
-from openai import OpenAI, APITimeoutError, APIStatusError
-from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn
+from openai import APIStatusError, APITimeoutError, OpenAI
+from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
 
 from outloud.config import (
-    CLOUD_WHISPER_MODEL,
-    CLOUD_SUMMARY_MODELS,
-    CLOUD_GRAMMAR_MODELS,
     API_TIMEOUT,
+    CLOUD_GRAMMAR_MODELS,
+    CLOUD_SUMMARY_MODELS,
+    CLOUD_WHISPER_MODEL,
     RATE_LIMIT_RETRY_DELAY,
 )
-from outloud.logger import get_logger
 from outloud.exceptions import (
-    RateLimitError,
-    QuotaExceededError,
-    NetworkError,
     APIKeyError,
+    NetworkError,
+    QuotaExceededError,
+    RateLimitError,
 )
+from outloud.logger import get_logger
 
 log = get_logger("cloud")
 
@@ -49,7 +48,7 @@ def save_api_keys(groq_key: str):
     log.info("API keys saved")
 
 
-def load_api_keys() -> Optional[dict]:
+def load_api_keys() -> dict | None:
     """Load API keys."""
     if not KEYS_FILE.exists():
         return None
@@ -143,8 +142,9 @@ def _chat_with_fallback(client: OpenAI, model_list: list[str],
 
 def _transcribe_chunks(client: OpenAI, audio_path: str) -> str:
     """Transcribe large audio file in chunks."""
-    from pydub import AudioSegment
     import tempfile
+
+    from pydub import AudioSegment
 
     audio = AudioSegment.from_mp3(audio_path)
     chunk_ms = 300_000  # 5 min

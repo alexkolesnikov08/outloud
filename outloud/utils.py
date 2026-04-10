@@ -1,6 +1,5 @@
 """Audio format conversion utilities."""
 
-import os
 from pathlib import Path
 
 from pydub import AudioSegment
@@ -10,7 +9,7 @@ from outloud.logger import get_logger
 log = get_logger("utils")
 
 
-def convert_to_wav(input_path: str, output_path: str = None) -> str:
+def convert_to_wav(input_path: str, output_path: str | None = None) -> str:
     """Convert audio file to WAV format.
 
     Args:
